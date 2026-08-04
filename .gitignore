@@ -1,0 +1,16 @@
+node_modules/
+release/
+out/
+dist/
+
+# 会话数据（含登录 Cookie）绝不入库
+Partitions/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.log
+
+.env
+.env.*
+.DS_Store

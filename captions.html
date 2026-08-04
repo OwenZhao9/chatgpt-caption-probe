@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>实时字幕</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: transparent; overflow: hidden; }
+  body {
+    font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    display: flex; flex-direction: column; padding: 10px; gap: 8px;
+    -webkit-app-region: drag;          /* 整块可拖动 */
+    user-select: none;
+  }
+
+  .lane {
+    background: rgba(18,18,20,.82);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex; gap: 12px; align-items: flex-start;
+    min-height: 0; flex: 1;
+    opacity: .35; transition: opacity .18s ease, border-color .18s ease;
+  }
+  .lane.active { opacity: 1; }
+  .lane.user      { border-left: 3px solid #4a9eff; }
+  .lane.assistant { border-left: 3px solid #4ade80; }
+
+  .tag {
+    flex: none; width: 34px; padding-top: 2px;
+    font-size: 11px; font-weight: 600; letter-spacing: .04em;
+    color: rgba(255,255,255,.45); text-transform: uppercase;
+  }
+  .lane.user .tag      { color: #4a9eff; }
+  .lane.assistant .tag { color: #4ade80; }
+
+  .text {
+    flex: 1; min-width: 0; color: #f2f2f4;
+    font-size: 19px; line-height: 1.45; font-weight: 450;
+    overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    text-shadow: 0 1px 3px rgba(0,0,0,.6);
+    word-break: break-word;
+  }
+  .text:empty::after { content: '…'; color: rgba(255,255,255,.25); }
+
+  /* 生成中的光标 */
+  .cursor {
+    display: inline-block; width: 2px; height: 1em; margin-left: 2px;
+    background: currentColor; vertical-align: -.12em;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  #hint {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: rgba(255,255,255,.5); font-size: 13px; pointer-events: none;
+    background: rgba(18,18,20,.82); border-radius: 12px; margin: 10px;
+  }
+  #hint.gone { display: none; }
+</style>
+</head>
+<body>
+  <div class="lane user" id="laneUser">
+    <div class="tag">你</div>
+    <div class="text" id="textUser"></div>
+  </div>
+  <div class="lane assistant" id="laneAssistant">
+    <div class="tag">AI</div>
+    <div class="text" id="textAssistant"></div>
+  </div>
+
+  <div id="hint">开始语音对话后，字幕会出现在这里 · 拖动可移动</div>
+
+<script>
+  const el = {
+    user:      { lane: document.getElementById('laneUser'),      text: document.getElementById('textUser') },
+    assistant: { lane: document.getElementById('laneAssistant'), text: document.getElementById('textAssistant') },
+  };
+  const hint = document.getElementById('hint');
+  const idle = {};   // role -> timer
+
+  window.captions.onUpdate(({ role, caption, busy }) => {
+    const target = el[role];
+    if (!target) return;
+    hint.classList.add('gone');
+
+    target.text.textContent = caption || '';
+    if (busy) target.text.append(Object.assign(document.createElement('span'), { className: 'cursor' }));
+
+    target.lane.classList.add('active');
+    clearTimeout(idle[role]);
+    // 静默 6 秒后淡下去，避免旧字幕一直占着视线
+    idle[role] = setTimeout(() => target.lane.classList.remove('active'), 6000);
+  });
+
+  window.captions.onClear(() => {
+    for (const k of Object.keys(el)) {
+      el[k].text.textContent = '';
+      el[k].lane.classList.remove('active');
+    }
+    hint.classList.remove('gone');
+  });
+</script>
+</body>
+</html>

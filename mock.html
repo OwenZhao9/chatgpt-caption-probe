@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>探针自检 · Mock ChatGPT DOM</title>
+<style>
+  :root { color-scheme: dark; }
+  body { background:#111; color:#e6e6e6; font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif; margin:0; padding:24px; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  .hint { color:#888; font-size:12px; margin-bottom:18px; }
+  .bar { display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; }
+  button { background:#2a2a2a; color:#e6e6e6; border:1px solid #444; border-radius:6px; padding:8px 14px; font-size:13px; cursor:pointer; }
+  button:hover { background:#333; }
+  button:disabled { opacity:.4; cursor:default; }
+  article { border:1px solid #2a2a2a; border-radius:8px; padding:12px 14px; margin-bottom:10px; }
+  article[data-message-author-role="user"] { border-left:3px solid #4a90d9; }
+  article[data-message-author-role="assistant"] { border-left:3px solid #55b86a; }
+  .role { font-size:11px; color:#777; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+  #stopwrap { min-height:34px; }
+</style>
+</head>
+<body>
+  <h1>探针自检 · Mock ChatGPT DOM</h1>
+  <div class="hint">
+    这个页面模仿 ChatGPT 的对话 DOM 结构（<code>article[data-testid^="conversation-turn-"]</code> +
+    <code>data-message-author-role</code> + <code>data-message-id</code>）。<br />
+    点两个按钮各跑一次，然后看终端输出——探针必须把第一种判成 INCREMENTAL、第二种判成 SINGLE-SHOT。<br />
+    <strong>如果这一步就不对，那么在真实 ChatGPT 上看到的任何结果都不可信。</strong>
+  </div>
+
+  <div class="bar">
+    <button id="inc">▶ 重放「增量流式」（逐词涨，模拟文字模式）</button>
+    <button id="one">▶ 重放「整句蹦」（一次成型，模拟最坏情况）</button>
+    <button id="clear">清空</button>
+  </div>
+
+  <!-- 模拟 ChatGPT 生成中出现的停止按钮，探针用它判断 streaming 状态 -->
+  <div id="stopwrap"></div>
+
+  <main id="thread"></main>
+
+<script>
+  const thread = document.getElementById('thread');
+  const stopwrap = document.getElementById('stopwrap');
+  let turnSeq = 0;
+
+  const SENTENCE =
+    "Sure! Let's practise ordering coffee. Imagine you walk into a cafe in London " +
+    "and the barista greets you. What would you say first?";
+
+  // 复刻真实 ChatGPT 的结构（2026-06 起）：
+  //   <section data-testid="conversation-turn-N">        ← 轮容器，标签是 section 不是 article
+  //     <div data-message-author-role=… data-message-id=…>  ← 消息正文在这一层
+  //     <div class="chrome">语音聊天已结束 / 计时器</div>      ← 界面噪声，是正文的兄弟节点
+  //   </section>
+  // 探针必须从「正文层」取文本，否则会把下面那行不断刷新的计时器当成文本变化。
+  function addTurn(role, text) {
+    turnSeq += 1;
+    const turn = document.createElement('section');
+    turn.setAttribute('data-testid', 'conversation-turn-' + turnSeq);
+    turn.setAttribute('data-turn', role);
+
+    const label = document.createElement('div');
+    label.className = 'role';
+    label.textContent = role;
+
+    const msg = document.createElement('div');
+    msg.setAttribute('data-message-author-role', role);
+    msg.setAttribute('data-message-id', 'mock-' + role + '-' + turnSeq);
+    msg.textContent = text;
+
+    turn.append(label, msg);
+    thread.append(turn);
+    return msg;
+  }
+
+  // 在轮容器里挂一个每 300ms 刷新的计时器 —— 真实语音模式下就有这么个东西。
+  // 探针如果从轮容器取文本，这个计时器会制造出大量假采样点；
+  // 从正文层取就完全看不到它。自检的通过标准会把这一点卡住。
+  function attachChrome(msgNode) {
+    const turn = msgNode.parentElement;
+    const chrome = document.createElement('div');
+    chrome.className = 'chrome';
+    chrome.style.cssText = 'color:#666;font-size:12px;margin-top:6px';
+    turn.append(chrome);
+    let n = 0;
+    const timer = setInterval(() => {
+      n += 1;
+      chrome.textContent = '语音聊天已结束\n' + n + '秒';
+      if (n >= 12) clearInterval(timer);
+    }, 300);
+    return timer;
+  }
+
+  function showStop(on) {
+    stopwrap.innerHTML = on
+      ? '<button data-testid="stop-button" aria-label="Stop streaming">■ 停止生成</button>'
+      : '';
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  async function replayIncremental() {
+    setBusy(true);
+    addTurn('user', 'Can we practise a coffee shop conversation?');
+    await sleep(400);
+    const body = addTurn('assistant', '');
+    attachChrome(body);          // 同时挂一个不断刷新的计时器，考验取文本的层级是否正确
+    showStop(true);
+    // 逐词写入：这是文字模式下 assistant 消息的真实行为
+    const words = SENTENCE.split(' ');
+    for (let i = 0; i < words.length; i += 1) {
+      body.textContent = words.slice(0, i + 1).join(' ');
+      await sleep(60 + Math.round(40 * ((i * 7919) % 13) / 13)); // 确定性抖动，不用 Math.random
+    }
+    showStop(false);
+    setBusy(false);
+  }
+
+  async function replaySingleShot() {
+    setBusy(true);
+    addTurn('user', 'And one more, please.');
+    await sleep(400);
+    showStop(true);
+    await sleep(1200);          // 「思考」期间 DOM 里什么都没有
+    addTurn('assistant', SENTENCE);  // 整段一次性出现
+    showStop(false);
+    setBusy(false);
+  }
+
+  function setBusy(on) {
+    for (const b of document.querySelectorAll('.bar button')) b.disabled = on;
+  }
+
+  document.getElementById('inc').onclick = replayIncremental;
+  document.getElementById('one').onclick = replaySingleShot;
+  document.getElementById('clear').onclick = () => { thread.innerHTML = ''; turnSeq = 0; };
+
+  // 自动模式：依次重放两种行为，跑完把标题改成 MOCK-DONE，
+  // 主进程据此出判定并退出 —— 让 `npm run selftest` 变成一条命令的回归测试。
+  if (location.search.includes('auto')) {
+    (async () => {
+      await sleep(300);
+      await replayIncremental();
+      await sleep(600);
+      await replaySingleShot();
+      await sleep(400);
+      document.title = 'MOCK-DONE';
+    })();
+  }
+</script>
+</body>
+</html>

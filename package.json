@@ -1,0 +1,15 @@
+{
+  "name": "chatgpt-caption-probe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Empirical probe: does ChatGPT Advanced Voice Mode write transcripts into the DOM incrementally or only as complete turns?",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "selftest": "electron . --mock",
+    "import": "electron . --import-cookies"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0"
+  }
+}

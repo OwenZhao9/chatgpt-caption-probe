@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; height:46px; display:flex; align-items:center; gap:14px; padding:0 14px;
+    font:12px/1 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+    background:#f5f5f7; color:#1d1d1f; border-bottom:1px solid #d8d8dc; user-select:none;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background:#1c1c1e; color:#e6e6e6; border-bottom-color:#333; }
+    button { background:#2c2c2e !important; color:#e6e6e6 !important; border-color:#444 !important; }
+  }
+  button {
+    background:#fff; border:1px solid #c6c6c9; border-radius:6px; padding:6px 12px;
+    font-size:12px; cursor:pointer; white-space:nowrap;
+  }
+  button:hover { filter:brightness(0.96); }
+  .stats { display:flex; gap:12px; margin-left:auto; font-variant-numeric:tabular-nums; }
+  .kv { display:flex; gap:5px; align-items:baseline; }
+  .k { opacity:.55; }
+  .v { font-weight:600; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#c33; flex:none; }
+  .dot.on { background:#2fa84f; }
+  .warn { color:#c47f00; }
+  .bad  { color:#c33; }
+</style>
+</head>
+<body>
+  <span class="dot" id="dot"></span>
+  <strong id="state">未挂载</strong>
+  <button id="captions">💬 字幕</button>
+  <button id="dump">出判定</button>
+  <button id="reset">重置采样</button>
+
+  <div class="stats">
+    <span class="kv"><span class="k">mutations</span><span class="v" id="mut">0</span></span>
+    <span class="kv"><span class="k">turns</span><span class="v" id="turns">0</span></span>
+    <span class="kv"><span class="k">samples</span><span class="v" id="samples">0</span></span>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('dump').onclick     = () => window.probe.dump();
+  $('reset').onclick    = () => window.probe.reset();
+  $('captions').onclick = () => window.probe.toggleCaptions();
+
+  window.probe.onHealth((h) => {
+    $('dot').classList.toggle('on', Boolean(h.attached));
+    $('mut').textContent     = h.mutations;
+    $('turns').textContent   = h.turnsSeen;
+    $('samples').textContent = h.samples;
+
+    // 三档健康状态，对应三种不同的排查方向
+    const s = $('state');
+    s.className = '';
+    if (!h.attached)            { s.textContent = '未挂载 · 观察器没装上'; s.className = 'bad'; }
+    else if (h.mutations === 0) { s.textContent = '已挂载 · 页面无 DOM 变化'; s.className = 'warn'; }
+    else if (h.turnsSeen === 0) { s.textContent = '有变化 · 但没找到对话轮'; s.className = 'warn'; }
+    else                        { s.textContent = '正常采样中'; }
+  });
+</script>
+</body>
+</html>
